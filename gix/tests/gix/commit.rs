@@ -87,3 +87,55 @@ mod describe {
         Ok(())
     }
 }
+
+#[cfg(feature = "command")]
+mod signature {
+    use std::process::Command;
+
+    use gix_testtools::signature;
+
+    #[test]
+    fn verifies_a_commit_signed_by_git_with_ssh() -> crate::Result {
+        if !signature::program_available("ssh-keygen") {
+            return Ok(());
+        }
+        let (_key_home, key) = signature::ssh_private_key()?;
+        let fixture = gix_testtools::scripted_fixture_writable("make_basic_repo.sh")?;
+        let output = Command::new("git")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+            .env("GIT_CONFIG_COUNT", "0")
+            .arg("-C")
+            .arg(fixture.path())
+            .args(["-c", "user.name=Gitoxide Signing Fixture", "-c"])
+            .arg(format!("user.email={}", signature::IDENTITY))
+            .args(["-c", "gpg.format=ssh", "-c"])
+            .arg(format!("user.signingKey={}", key.display()))
+            .args(["commit", "--allow-empty", "-S", "-m", "signed by Git"])
+            .output()?;
+        assert!(
+            output.status.success(),
+            "Git creates the reference signature: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let repo = gix::open_opts(
+            fixture.path(),
+            gix::open::Options::isolated().config_overrides([format!(
+                "gpg.ssh.allowedSignersFile={}",
+                signature::fixture("ssh-allowed-signers").display()
+            )]),
+        )?;
+        let outcome = repo
+            .head_commit()?
+            .verify_signature()?
+            .expect("Git created a signed commit");
+        assert!(outcome.is_valid(), "the Git-generated signature is valid");
+        assert_eq!(outcome.format, gix::commit::signature::Format::Ssh);
+        assert_eq!(
+            outcome.signer.as_ref().map(|signer| signer.as_slice()),
+            Some(signature::IDENTITY.as_bytes())
+        );
+        Ok(())
+    }
+}

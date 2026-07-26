@@ -443,6 +443,19 @@ fn newline_right_after_signature_multiline_header() -> crate::Result {
 }
 
 #[test]
+fn sha256_commits_use_their_own_signature_header() -> crate::Result {
+    let data = b"tree 0000000000000000000000000000000000000000000000000000000000000000\n\
+author A <a@example.com> 0 +0000\n\
+committer A <a@example.com> 0 +0000\n\
+gpgsig-sha256 signature\n\
+\nmessage\n";
+    let commit = CommitRef::from_bytes(data, gix_hash::Kind::Sha256)?;
+    assert_eq!(commit.extra_headers().pgp_signature(), Some(b"signature".as_bstr()));
+    assert!(gix_object::CommitRefIter::signature(data, gix_hash::Kind::Sha256)?.is_some());
+    Ok(())
+}
+
+#[test]
 fn bogus_multi_gpgsig_header() -> crate::Result {
     let fixture = commit_fixture("bogus-gpgsig-lines-in-git.git.txt")?;
     let commit = CommitRef::from_bytes(&fixture, crate::fixture_hash_kind())?;
