@@ -396,10 +396,16 @@ fn apply_environment_overrides(
             } else {
                 Permission::Deny
             },
-            &[{
-                let key = &Core::WORKTREE;
-                (env(key), key.name)
-            }][..],
+            &[
+                {
+                    let key = &Core::WORKTREE;
+                    (env(key), key.name)
+                },
+                {
+                    let key = &Core::NOTES_REF;
+                    (env(key), key.name)
+                },
+            ][..],
         ),
         (
             "http",
