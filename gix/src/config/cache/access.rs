@@ -9,7 +9,7 @@ use crate::{
     config::{
         Cache, boolean,
         cache::util::{ApplyLeniency, ApplyLeniencyDefaultValue},
-        tree::{Core, Key},
+        tree::{Commit, Core, Key},
     },
     remote,
     repository::identity,
@@ -212,6 +212,14 @@ impl Cache {
         const DEFAULT: bool = true;
         Ok(Core::COMMIT_GRAPH
             .enrich_error(self.resolved.boolean("core.commitGraph"))
+            .with_lenient_default_value(self.lenient_config, Some(DEFAULT))?
+            .unwrap_or(DEFAULT))
+    }
+
+    pub(crate) fn may_sign_commits(&self) -> Result<bool, config::boolean::Error> {
+        const DEFAULT: bool = false;
+        Ok(Commit::GPG_SIGN
+            .enrich_error(self.resolved.boolean(Commit::GPG_SIGN))
             .with_lenient_default_value(self.lenient_config, Some(DEFAULT))?
             .unwrap_or(DEFAULT))
     }

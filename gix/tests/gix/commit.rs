@@ -138,4 +138,112 @@ mod signature {
         );
         Ok(())
     }
+
+    #[test]
+    fn sign_write_and_verify_an_ssh_commit() -> crate::Result {
+        if !signature::program_available("ssh-keygen") {
+            return Ok(());
+        }
+        let (_key_home, key) = signature::ssh_private_key()?;
+        let options = gix::open::Options::isolated().config_overrides([
+            "user.name=Gitoxide Signing Fixture".to_owned(),
+            format!("user.email={}", signature::IDENTITY),
+            "gpg.format=ssh".to_owned(),
+            format!("user.signingKey={}", key.display()),
+            format!(
+                "gpg.ssh.allowedSignersFile={}",
+                signature::fixture("ssh-allowed-signers").display()
+            ),
+        ]);
+        let (repo, _tmp) = crate::util::repo_rw_opts("make_basic_repo.sh", options)?;
+        let mut signing_options = repo.commit_signing_options()?;
+        assert_eq!(signing_options.format, gix::commit::signature::Format::Ssh);
+        assert_eq!(signing_options.program, "ssh-keygen");
+        assert_eq!(signing_options.signing_key, key);
+        assert!(signing_options.program_arguments.is_empty());
+        signing_options.program_arguments.push("-q".into());
+        let signed = repo.head_commit()?.decode()?.sign(signing_options)?;
+        let id = repo.write_object(&signed)?;
+        assert!(
+            repo.find_commit(id)?
+                .verify_signature()?
+                .expect("the written commit has a signature")
+                .is_valid(),
+            "the configured SSH verifier accepts plumbing options resolved and adjusted by the caller"
+        );
+
+        let signed = repo.head_commit()?.sign()?;
+        let id = repo.write_object(&signed)?;
+        let outcome = repo
+            .find_commit(id)?
+            .verify_signature()?
+            .expect("the written commit has a signature");
+        assert!(outcome.is_valid(), "the configured SSH verifier accepts the signature");
+        assert_eq!(outcome.format, gix::commit::signature::Format::Ssh);
+        Ok(())
+    }
+
+    #[test]
+    fn resolves_format_defaults_and_program_paths() -> crate::Result {
+        let home = gix::path::env::home_dir().expect("the test environment has a home directory");
+        let mut permissions = gix::open::Permissions::isolated();
+        permissions.env.home = gix::sec::Permission::Allow;
+        let options = gix::open::Options::isolated()
+            .permissions(permissions)
+            .config_overrides([
+                "user.name=Gitoxide Signing Fixture",
+                "user.email=signing@example.com",
+                "gpg.format=x509",
+                "gpg.x509.program=~/bin/custom-gpgsm",
+            ]);
+        let (repo, _tmp) = crate::util::repo_rw_opts("make_basic_repo.sh", options)?;
+        let options = repo.commit_signing_options()?;
+        assert_eq!(options.format, gix::commit::signature::Format::X509);
+        assert_eq!(options.program, home.join("bin/custom-gpgsm"));
+        assert_eq!(options.signing_key, "Gitoxide Signing Fixture <signing@example.com>");
+        assert!(options.program_arguments.is_empty());
+        assert!(options.environment.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn resolves_signing_options_only_when_enabled() -> crate::Result {
+        let disabled = gix::open_opts(
+            gix_testtools::scripted_fixture_read_only("make_basic_repo.sh")?,
+            gix::open::Options::isolated().config_overrides(["gpg.format=invalid"]),
+        )?;
+        assert!(
+            disabled.commit_signing_options_if_enabled()?.is_none(),
+            "disabled signing does not resolve unrelated signer configuration"
+        );
+
+        let enabled = gix::open_opts(
+            gix_testtools::scripted_fixture_read_only("make_basic_repo.sh")?,
+            gix::open::Options::isolated().config_overrides([
+                "commit.gpgSign=true",
+                "user.name=Gitoxide Signing Fixture",
+                "user.email=signing@example.com",
+            ]),
+        )?;
+        assert!(
+            enabled.commit_signing_options_if_enabled()?.is_some(),
+            "enabled signing resolves the same options as an explicit request"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolves_the_default_ssh_key_command() -> crate::Result {
+        let options = gix::open::Options::isolated().config_overrides([
+            "user.name=Gitoxide Signing Fixture",
+            "user.email=signing@example.com",
+            "gpg.format=ssh",
+            "gpg.ssh.defaultKeyCommand=printf 'key::ssh-ed25519 fixture-key\\n'",
+        ]);
+        let (repo, _tmp) = crate::util::repo_rw_opts("make_basic_repo.sh", options)?;
+        let options = repo.commit_signing_options()?;
+        assert_eq!(options.signing_key, "key::ssh-ed25519 fixture-key");
+        Ok(())
+    }
 }

@@ -228,6 +228,15 @@ impl<'repo> Commit<'repo> {
     ) -> Result<Option<crate::commit::signature::Outcome>, crate::commit::signature::Error> {
         crate::commit::signature::verify(self)
     }
+
+    /// Return this commit as an owned object with a Git-compatible signature added from repository configuration.
+    ///
+    /// An existing signature for the repository's object format is replaced. The returned commit can be persisted with
+    /// [`Repository::write_object()`](crate::Repository::write_object()).
+    #[cfg(feature = "command")]
+    pub fn sign(&self) -> Result<gix_object::Commit, crate::commit::signature::sign::Error> {
+        crate::commit::signature::sign::sign(self)
+    }
 }
 
 impl std::fmt::Debug for Commit<'_> {

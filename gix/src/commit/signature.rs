@@ -6,17 +6,10 @@ use std::{
 };
 
 use crate::bstr::{BStr, BString, ByteSlice};
+pub use gix_object::commit::signature::Format;
 
-/// The format of a cryptographic signature.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Format {
-    /// An OpenPGP signature.
-    OpenPgp,
-    /// An X.509 signature.
-    X509,
-    /// An SSH signature.
-    Ssh,
-}
+/// Commit signing using Git-compatible configuration.
+pub mod sign;
 
 /// The result reported by the signature verifier.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
