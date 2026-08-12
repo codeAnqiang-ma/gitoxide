@@ -205,16 +205,19 @@ pub fn statistics(
             },
         )?
     } else {
-        if extra_header_lookup {
-            bail!("extra-header-lookup is only meaningful in threaded mode");
-        }
-        let mut stats = Statistics::default();
+        let mut stats = Statistics {
+            ids: extra_header_lookup.then(Vec::new),
+            ..Default::default()
+        };
 
         for (count, id) in object_ids.enumerate() {
             if count % chunk_size == 0 && gix::interrupt::is_triggered() {
                 return Err(cancelled());
             }
             stats.consume(repo.objects.header(id)?);
+            if let Some(ids) = stats.ids.as_mut() {
+                ids.push(id);
+            }
             progress.inc();
         }
         stats
@@ -274,4 +277,29 @@ pub fn entries(repo: gix::Repository, format: OutputFormat, mut out: impl io::Wr
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extra_header_lookup_works_with_one_thread() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let repo = gix::init_bare(dir.path())?;
+        repo.write_blob(b"an object to look up twice")?;
+
+        statistics(
+            repo,
+            gix::progress::Discard,
+            Vec::new(),
+            Vec::new(),
+            statistics::Options {
+                format: OutputFormat::Human,
+                thread_limit: Some(1),
+                extra_header_lookup: true,
+            },
+        )?;
+        Ok(())
+    }
 }
