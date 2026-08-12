@@ -46,6 +46,9 @@ pub use io::_impl::{bytes, bytes_of_file, bytes_with_hasher};
 mod object_id;
 pub use object_id::{ObjectId, decode};
 
+mod change_id;
+pub use change_id::{ChangeId, ReverseHexDisplay};
+
 ///
 pub mod prefix;
 
